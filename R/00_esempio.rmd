@@ -1,0 +1,118 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+```{r}
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+
+```
+
+
+
+
+
+carico i dati
+```{r}
+dat <- read.csv("https://www.comune.venezia.it/sites/comune.venezia.it/files/documenti/centro_maree/archivioDati/archivio_storico/dati_meteo/palazzocavalli2003.csv", sep = ";", header = TRUE, dec = ",", skip = 1)
+
+str(dat)
+
+
+rec <- read.csv("https://www.comune.venezia.it/sites/default/files/publicCPSM2/stazioni/trimestrale/Stazione_PalazzoCavalli.csv", sep = ";", header = TRUE, dec = ",")
+str(rec)
+
+```
+
+wrangling data
+
+```{r}
+dst <- dat |> mutate(datetime = as_datetime(Data_ora_solare),
+										 t = as.numeric(P.Cavalli_Temperatura_aria_.C),
+										 doy = yday(datetime)) |>
+	group_by(doy)|>
+	summarise(aveT = mean(t), maxT = max(t), minT = min(t))|>
+	mutate(fdate =  ymd("2023-01-01") + days(doy - 1))
+
+
+drec <- rec |> mutate(datetime = as_datetime(Data),
+										 t = as.numeric(Palazzo.Cavalli.Temperatura),
+										 doy = yday(datetime)) |>
+	group_by(doy)|>
+	summarise(aveT = mean(t), maxT = max(t), minT = min(t)) |>
+	mutate(fdate =  ymd("2023-01-01") + days(doy - 1))
+)
+
+```
+
+
+plot
+
+
+```{r}
+ggplot(dst, aes(fdate, aveT, ymin = minT, ymax = maxT)) +
+	geom_ribbon(alpha = 0.3) +
+	geom_ribbon(data = drec,  fill = "red", alpha = 0.3) +
+	geom_line(data = drec,  colour = "red") +
+
+	geom_line() +
+	theme_bw()
+
+```
+
+
+
+ciclo
+
+
+```{r}
+out <- data.frame(
+	doy = integer(),
+	aveT = numeric(),
+	minT = numeric(),
+	maxT = numeric(),
+	fdate = Date(),
+	year = integer()
+	
+	
+)
+
+for(y in 2001:2022){
+	
+	
+	dat <-  read.csv(paste0("https://www.comune.venezia.it/sites/comune.venezia.it/files/documenti/centro_maree/archivioDati/archivio_storico/dati_meteo/palazzocavalli", y, ".csv"), sep = ";", header = TRUE, dec = ",", skip = 1)
+
+	
+	
+	dst <- dat |> mutate(datetime = as_datetime(Data_ora_solare),
+										 t = as.numeric(P.Cavalli_Temperatura_aria_.C),
+										 doy = yday(datetime)) |>
+	group_by(doy)|>
+	summarise(aveT = mean(t), maxT = max(t), minT = min(t))|>
+	mutate(fdate =  ymd("2023-01-01") + days(doy - 1),
+				 year = y) 
+		
+
+	out <- rbind(out, dst)
+	
+}
+
+
+
+```
+
+
+
+```{r}
+ggplot(out, aes(fdate, aveT, colour = year)) +
+	geom_line(data = drec,  colour = "red") +
+
+	geom_line() +
+	theme_bw()
+```
+
+
