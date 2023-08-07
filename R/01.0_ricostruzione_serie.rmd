@@ -1,0 +1,276 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+```{r}
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(stringr)
+
+```
+
+
+
+## Palazzo Cavalli
+
+carico i dati dal sito del comune di Venezia
+(https://www.comune.venezia.it/it/content/7-palazzo-cavalli)
+
+
+
+definisco il percorso dove trovo i files
+
+```{r}
+path <- "https://www.comune.venezia.it/sites/comune.venezia.it/files/documenti/centro_maree/archivioDati/archivio_storico/dati_meteo/palazzocavalli"
+
+```
+
+
+```{r}
+
+i <- 2003
+
+
+
+dat <- read.csv(paste0(path, i, ".csv"), sep = ";", header = TRUE, dec = ",", skip = 1)
+
+str(dat)
+
+df <- data.frame(
+	data = as_datetime(dat$Data_ora_solare),
+	t = as.numeric(dat$P.Cavalli_Temperatura_aria_.C)
+)
+
+
+
+
+ggplot(df, aes(data, t)) +
+	geom_line()
+
+```
+
+ciclo per attaccare più dati
+
+```{r}
+out <- data.frame(data = df$data, t = df$t)[0, ]
+
+for( i in 2002:2020){
+	
+dat <- read.csv(paste0(path, i, ".csv"), sep = ";", header = TRUE, dec = ",", skip = 1)
+
+str(dat)
+
+df <- data.frame(
+	data = as_datetime(dat$Data_ora_solare),
+	t = as.numeric(dat$P.Cavalli_Temperatura_aria_.C)
+)
+
+out <- rbind(out, df)
+
+rm(df)
+print(i)
+}
+```
+
+
+2021 e 2022
+
+https://www.comune.venezia.it/sites/comune.venezia.it/files/documenti/centro_maree/archivioDati/archivio_storico/dati_meteo/cavalli2022_1ora.csv
+
+```{r}
+
+i <- 2021
+
+dat <- readr::read_csv(paste0(path, i, ".csv"),  skip = 1)
+names(dat)
+str(dat)
+
+df <- data.frame(
+	data = as_datetime(dat$Data_ora_solare),
+	t = as.numeric(dat[,3])
+)
+
+out <- rbind(out, df)
+
+
+i <- 2022
+	
+
+dat <- readr::read_csv(paste0("https://www.comune.venezia.it/sites/comune.venezia.it/files/documenti/centro_maree/archivioDati/archivio_storico/dati_meteo/cavalli"
+	, i, "_1ora.csv"))
+names(dat)
+str(dat)
+
+df <- data.frame(
+	data = as_datetime(dat$GIORNO)+dat$ORA,
+	t = dat[,3]
+)
+
+names(df)[2] <- "t"
+
+out <- rbind(out, df)
+
+
+```
+
+
+
+dati recenti
+
+```{r}
+
+
+dat <- 
+	
+		
+dat <- readr::read_csv2("https://www.comune.venezia.it/sites/default/files/publicCPSM2/stazioni/trimestrale/Stazione_PalazzoCavalli.csv")
+
+str(dat)
+
+df <- data.frame(
+	data = as_datetime(dat$Data),
+	t = as.numeric(dat$`Palazzo Cavalli Temperatura`) / 10
+)
+
+out <- rbind(out, df)
+
+
+
+	
+
+```
+
+
+
+
+
+
+```{r}
+ggplot(out, aes(data, t)) +
+	geom_line()
+```
+
+
+
+
+
+```{r}
+dst <- out |> mutate(y = year(data), doy = yday(data)) 
+
+
+
+ggplot(filter(dst, y < 2023), aes(doy, t)) +
+	geom_line(alpha = 0.3, aes(group = factor(y), colour = y)) +
+	theme_few() +
+	geom_line(data = filter(dst, y == 2023), aes(y = t/10))
+
+```
+
+
+plot
+
+
+```{r}
+ggplot(dst, aes(fdate, aveT, ymin = minT, ymax = maxT)) +
+	geom_ribbon(alpha = 0.3) +
+	geom_ribbon(data = drec,  fill = "red", alpha = 0.3) +
+	geom_line(data = drec,  colour = "red") +
+
+	geom_line() +
+	theme_bw()
+
+```
+
+
+# dati storici
+
+```{r}
+path <- "https://www.comune.venezia.it/sites/comune.venezia.it/files/documenti/centro_maree/archivioDati/DB_OSSERVATORIO_"
+
+int <- paste0(seq(1940, 2000, by = 5), "_", seq(1944, 2004, by = 5))
+
+out2 <- data.frame(data = out$data, t = out$t)[0, ]
+
+for( i in 1:length(int)){
+	
+	
+dat <- readr::read_csv2(paste0(path, int[i], ".csv")) |> as.data.frame()
+
+str(dat)
+
+df <- data.frame(
+	data = dmy_hm(paste(dat$`DATA (CET)`,
+									
+									
+									stringr::str_replace(dat$`ORA (CET)`, "\\.", ":")), format = "format")[-nrow(dat)]
+,
+	t = as.numeric(dat$`TEMPERATURA (gradi centigradi)`)
+)
+
+out2 <- rbind(out2, df)
+
+
+rm(df)
+print(i)
+}
+
+
+```
+
+```{r}
+summary(out2)
+ggplot(out2, aes(data, t)) +
+	geom_line()
+```
+
+
+summary
+
+
+```{r}
+oo <- out2 |> mutate(
+	y = year(data),
+	doy = yday(data),
+	day = as_date(data)
+) |> 
+	group_by(y, day, doy) |>
+	summarise(aveT = mean(t, na.rm = T))
+
+
+summary(oo)
+ggplot(oo, aes(day, aveT)) +
+	geom_line() +
+	geom_smooth()
+
+ggplot(oo, aes(doy, aveT, colour = y, group = factor(y))) +
+	geom_line(alpha = 0.3) +
+	theme_few()
+
+
+
+
+
+```
+
+
+
+```{r}
+
+
+dmy_hm(paste(dat$`DATA (CET)`,
+									
+									
+									stringr::str_replace(dat$`ORA (CET)`, "\\.", ":")), format = "format")
+
+
+
+
+
+stringr::str_replace(dat$`ORA (CET)`, "\\.", ":")
+
+```
+
