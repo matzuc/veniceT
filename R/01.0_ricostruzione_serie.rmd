@@ -56,7 +56,7 @@ ggplot(df, aes(data, t)) +
 ciclo per attaccare più dati
 
 ```{r}
-out <- data.frame(data = df$data, t = df$t)[0, ]
+out <- data.frame(data = df$data, t = df$t, y = NA)[0, ]
 
 for( i in 2002:2020){
 	
@@ -66,7 +66,8 @@ str(dat)
 
 df <- data.frame(
 	data = as_datetime(dat$Data_ora_solare),
-	t = as.numeric(dat$P.Cavalli_Temperatura_aria_.C)
+	t = as.numeric(dat$P.Cavalli_Temperatura_aria_.C,
+								 y = i)
 )
 
 out <- rbind(out, df)
@@ -84,15 +85,17 @@ https://www.comune.venezia.it/sites/comune.venezia.it/files/documenti/centro_mar
 ```{r}
 
 i <- 2021
-
-dat <- readr::read_csv(paste0(path, i, ".csv"),  skip = 1)
-names(dat)
+rm(dat)
+dat <- readr::read_delim(paste0(path, i, ".csv"), skip = 1, name_repair = "minimal", col_types = list("character", "character", "character"))[1:3]
+names(dat)[3] <- "t"
 str(dat)
-
+dat
 df <- data.frame(
-	data = as_datetime(dat$Data_ora_solare),
-	t = as.numeric(dat[,3])
+	data = dmy_hm(dat$Data_ora_solare),
+	t = as.numeric(dat$t)
 )
+
+summary(df)
 
 out <- rbind(out, df)
 
@@ -106,11 +109,13 @@ names(dat)
 str(dat)
 
 df <- data.frame(
-	data = as_datetime(dat$GIORNO)+dat$ORA,
+	data = dmy(dat$GIORNO)+dat$ORA,
 	t = dat[,3]
 )
 
 names(df)[2] <- "t"
+
+summary(df)
 
 out <- rbind(out, df)
 
@@ -124,8 +129,6 @@ dati recenti
 ```{r}
 
 
-dat <- 
-	
 		
 dat <- readr::read_csv2("https://www.comune.venezia.it/sites/default/files/publicCPSM2/stazioni/trimestrale/Stazione_PalazzoCavalli.csv")
 
@@ -135,6 +138,8 @@ df <- data.frame(
 	data = as_datetime(dat$Data),
 	t = as.numeric(dat$`Palazzo Cavalli Temperatura`) / 10
 )
+
+summary(df)
 
 out <- rbind(out, df)
 
@@ -146,44 +151,60 @@ out <- rbind(out, df)
 
 
 
+pulizia
+
 
 
 
 ```{r}
-ggplot(out, aes(data, t)) +
-	geom_line()
+outC <- out |> mutate(diff = c(NA, diff(t))) |>
+	mutate(tC = ifelse((abs(diff) > 1 & t == 0) | (diff == 0 & t == 0), NA, t))
+
+```
+
+```{r}
+ggplot(outC, aes(x = diff)) +
+	geom_histogram()
+
+
+quantile(abs(outC$diff), c(10:99/100), na.rm = T)
+
 ```
 
 
 
 
+```{r}
+ggplot(outC, aes(data, t)) +
+	geom_line() +
+	geom_point(data = filter(outC,abs(diff) > 5), aes(y = abs(diff)), col = "red")
+```
+
+
 
 ```{r}
-dst <- out |> mutate(y = year(data), doy = yday(data)) 
+ggplot(outC, aes(data, tC)) +
+	geom_line() +
+	geom_point(data = filter(outC,abs(diff) > 1 & abs(diff) < 2 & t == 0), aes(y = abs(diff)), col = "red")
+```
 
 
 
-ggplot(filter(dst, y < 2023), aes(doy, t)) +
+```{r}
+dst <- outC |> mutate(y = year(data), doy = yday(data)) 
+
+
+
+ggplot(filter(dst, y < 2023), aes(doy, tC)) +
 	geom_line(alpha = 0.3, aes(group = factor(y), colour = y)) +
 	theme_few() +
-	geom_line(data = filter(dst, y == 2023), aes(y = t/10))
+	geom_line(data = filter(dst, y == 2023), aes(y = tC))
 
 ```
 
 
 plot
 
-
-```{r}
-ggplot(dst, aes(fdate, aveT, ymin = minT, ymax = maxT)) +
-	geom_ribbon(alpha = 0.3) +
-	geom_ribbon(data = drec,  fill = "red", alpha = 0.3) +
-	geom_line(data = drec,  colour = "red") +
-
-	geom_line() +
-	theme_bw()
-
-```
 
 
 # dati storici
@@ -228,11 +249,104 @@ ggplot(out2, aes(data, t)) +
 ```
 
 
+ultimo periodo
+
+
+```{r}
+
+
+
+
+
+
+
+
+dat <- readr::read_csv2("https://www.comune.venezia.it/sites/comune.venezia.it/files/documenti/centro_maree/archivioDati/archivio_storico/dati_meteo/dati%20meteo%20osservatorio%2026nov2004-3dic2009_orari_1.csv") |> as.data.frame()
+
+str(dat)
+
+df <- data.frame(
+	data = ymd_hms(dat$`Data_ora(solare)`),
+	t = as.numeric(dat$`T ist (�C)`)
+)
+
+out2 <- rbind(out2, df)
+
+
+
+```
+
+
+# confronto
+
+
+```{r}
+lido <- out2|> filter(data > '2002-01-01')
+cav <- outC |> filter(data < '2010-01-01')
+
+ggplot(lido, aes(data, t)) +
+	geom_line() +
+	geom_line(data = cav, aes(y = tC), colour = "darkgreen", alpha = 0.9) +
+	theme_few()
+	
+
+	ggplot(lido, aes(data, t)) +
+	geom_line() +
+	geom_line(data = cav, aes(y = tC), colour = "darkgreen", alpha = 0.9) +
+	theme_few() +
+		xlim(ymd_hms('2006-01-01 00:00:00'),ymd_hms('2007-01-01 00:00:00'))
+	
+
+	
+
+```
+
+
+combacia bene
+
+
+```{r}
+
+comp <- out2 |> rename(tlid = t)|> inner_join(cav)
+
+ggplot(comp, aes(tlid, tC)) +
+	geom_point(alpha = 0.1) +
+	geom_smooth(method = "lm")
+
+
+
+summary(lm(tlid~tC, data = comp))
+modCor <- lm(tlid~tC, data = comp)
+
+```
+correggo i dati del cavalli secondo questa regressione
+
+
+```{r}
+cavCor <- outC 
+cavCor$tCORR <- predict(modCor, newdata = cavCor)
+
+
+tot <- rbind(out2,
+						 data.frame(data = cavCor$data,
+						 					 t = cavCor$tCORR))
+
+
+	ggplot(tot, aes(data, t)) +
+	geom_line() +
+	theme_few() 
+```
+
+
+
+
+
+
 summary
 
 
 ```{r}
-oo <- out2 |> mutate(
+oo <- tot |> mutate(
 	y = year(data),
 	doy = yday(data),
 	day = as_date(data)
@@ -241,8 +355,16 @@ oo <- out2 |> mutate(
 	summarise(aveT = mean(t, na.rm = T))
 
 
+typ19402000 <- oo |> ungroup() |>group_by(doy) |> summarize(typT = mean(aveT, na.rm = T))
+ggplot(typ19402000, aes(doy, typT)) +
+	geom_line() +
+	geom_smooth()
+oo <- left_join(oo, typ19402000) |> mutate(ano = aveT - typT)
+
+
+
 summary(oo)
-ggplot(oo, aes(day, aveT)) +
+ggplot(oo, aes(day, ano)) +
 	geom_line() +
 	geom_smooth()
 
@@ -260,17 +382,12 @@ ggplot(oo, aes(doy, aveT, colour = y, group = factor(y))) +
 
 ```{r}
 
+ggplot(filter(oo , y < 2001), aes(doy, aveT))+
+	geom_line(alpha = 0.3, colour = "grey70", aes( group = factor(y))) +
+	theme_few() +
+	geom_line(data = filter(oo , y == 2003)) + 
+	geom_line(data = filter(oo , y == 2023), col = "blue") 
 
-dmy_hm(paste(dat$`DATA (CET)`,
-									
-									
-									stringr::str_replace(dat$`ORA (CET)`, "\\.", ":")), format = "format")
-
-
-
-
-
-stringr::str_replace(dat$`ORA (CET)`, "\\.", ":")
 
 ```
 
